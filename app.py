@@ -98,7 +98,18 @@ def gauge_html(value, label='MEASURED RPM', actual=None, revving=False, audio_pa
         if not path or not path.exists(): return ''
         size=path.stat().st_size
         if size > 42*1024*1024: return ''
-        mime=mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+        # Use the standard WAV media type explicitly. Python commonly guesses
+        # audio/x-wav, which some browser/media contexts reject for data URLs.
+        if path.suffix.lower() == '.wav':
+            mime = 'audio/wav'
+        elif path.suffix.lower() == '.mp3':
+            mime = 'audio/mpeg'
+        elif path.suffix.lower() == '.ogg':
+            mime = 'audio/ogg'
+        elif path.suffix.lower() == '.webm':
+            mime = 'audio/webm'
+        else:
+            mime = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
         return f'data:{mime};base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
     aud=data_uri(audio_path); vid=data_uri(video_path)
     trace_json=json.dumps(trace or [])

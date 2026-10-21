@@ -126,8 +126,8 @@ async function startCycle(){{if(running)return;running=true;play.disabled=true;s
     // Video is optional: never let a video sync/permission failure stop audio playback.
     try{{const vp=video.play();if(vp)vp.catch(()=>{{state.textContent='Audio playing · video playback blocked by browser';}});}}catch(e){{state.textContent='Audio playing · video playback unavailable';}}
   }}
-}}catch(e){{running=false;play.disabled=false;state.textContent='Playback failed — check the recording and press PLAY again';return}}
-if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);}}audio.addEventListener('ended',()=>stopCycle(true));play.addEventListener('click',()=>startCycle());stop.addEventListener('click',()=>stopCycle(false));draw('g',0);draw('ga',0);
+}}catch(e){{running=false;play.disabled=false;const detail=(e&&((e.name?e.name+': ':'')+(e.message||'')))||String(e||'Unknown playback error');state.textContent='Playback error · '+detail;console.error('RevSense audio playback failed:',e,'src length:',audio.src.length,'readyState:',audio.readyState,'networkState:',audio.networkState,'canPlayType:',audio.canPlayType('audio/wav'));return}}
+if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);}}audio.addEventListener('error',()=>{{const err=audio.error;state.textContent='Audio load error · '+(err?('code '+err.code+' '+({{1:'ABORTED',2:'NETWORK',3:'DECODE',4:'UNSUPPORTED'}}[err.code]||'')):'unknown');console.error('RevSense audio element error:',err,'source length:',audio.src.length);}});audio.addEventListener('canplay',()=>{{if(!running)state.textContent='Audio ready · click PLAY';}});audio.addEventListener('ended',()=>stopCycle(true));play.addEventListener('click',()=>startCycle());stop.addEventListener('click',()=>stopCycle(false));draw('g',0);draw('ga',0);
 </script></body></html>'''
 
 # Load known previous summaries as a transparent fallback when audio files are not present.

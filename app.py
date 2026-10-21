@@ -117,8 +117,17 @@ function showRpm(v){{v=Math.max(0,Math.min(maxRpm,v||0));rpmText.innerHTML=Math.
 function interp(t){{if(!trace.length)return target*(Math.min(1,t/1.2));if(t<=trace[0][0])return trace[0][1];for(let i=1;i<trace.length;i++){{if(t<=trace[i][0]){{let [t0,v0]=trace[i-1],[t1,v1]=trace[i];let f=(t-t0)/Math.max(.001,t1-t0);return v0+(v1-v0)*f;}}}}return trace[trace.length-1][1];}}
 function frame(now){{if(!running)return;const t=audio.currentTime;if(isRev)showRpm(interp(t));else{{const duration=audio.duration||5;const ramp=Math.min(1,t/Math.min(1.25,duration*.25));showRpm(target*ramp);}}raf=requestAnimationFrame(frame);}}
 function stopCycle(replay){{running=false;if(raf)cancelAnimationFrame(raf);raf=null;audio.pause();try{{audio.currentTime=0}}catch(e){{}}if(video){{video.pause();try{{video.currentTime=0}}catch(e){{}}}}showRpm(0);play.disabled=false;state.textContent='RPM returned to zero';if(replay&&shouldLoop){{setTimeout(()=>{{if(shouldLoop)startCycle()}},1000)}}}}
-async function startCycle(){{if(running)return;running=true;play.disabled=true;state.textContent='Playing · tracking audio';showRpm(0);try{{audio.currentTime=0;if(video){{video.muted=true;video.pause();video.currentTime=0;try{{if(video.readyState<1)await new Promise(resolve=>{{video.addEventListener('loadedmetadata',resolve,{{once:true}});video.load();setTimeout(resolve,1200);}});video.playbackRate=1;}}catch(e){{}}}}await audio.play();if(video){{video.muted=true;video.currentTime=0;try{{if(video.readyState>=2)await new Promise(resolve=>{{if(Math.abs(video.currentTime)<0.02)resolve();else{{video.addEventListener('seeked',resolve,{{once:true}});setTimeout(resolve,250);}}}});}}catch(e){{}}video.playbackRate=1;video.play().catch(()=>{{state.textContent='Audio playing · video playback blocked by browser';}})}}}}catch(e){{running=false;play.disabled=false;state.textContent='Playback was blocked — press PLAY again';return}}if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);}}
-audio.addEventListener('ended',()=>stopCycle(true));play.addEventListener('click',()=>startCycle());stop.addEventListener('click',()=>stopCycle(false));draw('g',0);draw('ga',0);
+async function startCycle(){{if(running)return;running=true;play.disabled=true;state.textContent='Playing · tracking audio';showRpm(0);try{{audio.currentTime=0;
+  // Start audio immediately inside the user's click handler. Waiting for video metadata first
+  // can consume the browser's transient user-activation permission and block audio.play().
+  const audioStart=audio.play();
+  await audioStart;
+  if(video){{video.muted=true;video.playbackRate=1;try{{video.pause();video.currentTime=0;}}catch(e){{}}
+    // Video is optional: never let a video sync/permission failure stop audio playback.
+    try{{const vp=video.play();if(vp)vp.catch(()=>{{state.textContent='Audio playing · video playback blocked by browser';}});}}catch(e){{state.textContent='Audio playing · video playback unavailable';}}
+  }}
+}}catch(e){{running=false;play.disabled=false;state.textContent='Playback failed — check the recording and press PLAY again';return}}
+if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);}}audio.addEventListener('ended',()=>stopCycle(true));play.addEventListener('click',()=>startCycle());stop.addEventListener('click',()=>stopCycle(false));draw('g',0);draw('ga',0);
 </script></body></html>'''
 
 # Load known previous summaries as a transparent fallback when audio files are not present.

@@ -102,24 +102,29 @@ that every estimate is correct.
 
 ## 🧮 Key Relationship
 
-For a **single-cylinder, four-stroke engine**, one firing event occurs
-per two crankshaft revolutions. If (f_0) is the firing-event frequency
-in hertz (events per second), then:
+For a **single-cylinder, four-stroke engine**, one firing event occurs per two crankshaft revolutions. If \(f_0\) is the firing-event frequency in hertz (events per second), then:
 
-\[ f_0 = `\frac{\mathrm{RPM}}{120}`{=tex} \]
+**Firing-event frequency**
+
+\[
+f_0 = \frac{\mathrm{RPM}}{120}
+\]
 
 Rearranging gives:
 
-\[ `\boxed{\mathrm{RPM} = 120 f_0}`{=tex} \]
+**Engine speed**
 
-For example, a firing-event frequency of approximately
-(33.3 `\text{Hz}`{=tex}) corresponds to:
+\[
+\mathrm{RPM} = 120 \times f_0
+\]
 
-\[ 120 `\times 33.3`{=tex} `\approx 3996`{=tex} `\mathrm{RPM}`{=tex} \]
+**Example:** a firing-event frequency of approximately **33.3 Hz** corresponds to:
 
-This relationship depends on the assumed engine cycle and cylinder
-configuration. The estimator's frequency estimate can still be affected
-by noise, harmonics, and ambiguity in the recorded sound.
+\[
+\mathrm{RPM} = 120 \times 33.3 \approx 3996\ \mathrm{RPM}
+\]
+
+This relationship depends on the assumed engine cycle and cylinder configuration. The estimated frequency can still be affected by noise, harmonics, and ambiguity in the recorded sound.
 
 ## 🖥️ Dashboard Features
 

@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RevSense — Project Presentation</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- MathJax for Beautiful Equations -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #090d16;
+      color: #0f172a;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    .slide {
+      display: none;
+      opacity: 0;
+      transform: scale(0.99);
+      transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    }
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+    }
+    /* Pure White Glowing Throttle Blip Animation for RevSense Title */
+    @keyframes revGlowWhite {
+      0%, 100% {
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.6), 0 0 20px rgba(255, 255, 255, 0.4);
+        transform: scale(1);
+      }
+      15% {
+        text-shadow: 0 0 30px rgba(255, 255, 255, 1), 0 0 50px rgba(147, 197, 253, 0.9), 0 0 80px rgba(59, 130, 246, 0.7);
+        transform: scale(1.03);
+      }
+      30% {
+        text-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+        transform: scale(1);
+      }
+      45% {
+        text-shadow: 0 0 40px rgba(255, 255, 255, 1), 0 0 70px rgba(147, 197, 253, 1), 0 0 100px rgba(37, 99, 235, 0.8);
+        transform: scale(1.05);
+      }
+    }
+    .rev-glow-white {
+      color: #ffffff !important;
+      animation: revGlowWhite 2.2s infinite ease-in-out;
+    }
+    .math-box {
+      font-family: 'JetBrains Mono', monospace;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #1e3a8a;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-block;
+      font-size: 0.85em;
+    }
+    .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    /* Presentation-wide layout refinements */
+    #slide-viewport { isolation: isolate; }
+    #slides-container { scroll-behavior: smooth; scrollbar-gutter: stable; }
+    .slide { width: 100%; min-height: 100%; box-sizing: border-box; }
+    .slide.active { animation: slideIn 180ms ease-out both; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(4px) scale(0.995); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .nav-button {
+      width: 2.75rem; height: 4.25rem; display: flex; align-items: center;
+      justify-content: center; border: 1px solid rgba(148,163,184,.25);
+      background: rgba(15,23,42,.72); color: #fff; border-radius: 1rem;
+      backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(15,23,42,.16);
+      transition: background .18s ease, transform .18s ease;
+    }
+    .nav-button:hover:not(:disabled) { background: rgba(30,64,175,.92); }
+    .nav-button:disabled { opacity: .28; cursor: not-allowed; box-shadow: none; }
+    .nav-button:active { transform: scale(.97); }
+    .nav-button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+    #slide-counter {
+      position: absolute; z-index: 50; bottom: .75rem; left: 50%;
+      transform: translateX(-50%); padding: .35rem .75rem; border-radius: 999px;
+      background: rgba(15,23,42,.78); color: white; font: 500 .75rem/1.2 'JetBrains Mono', monospace;
+      letter-spacing: .04em; white-space: nowrap; pointer-events: none;
+    }
+    img { max-width: 100%; }
+    @media (max-width: 640px) {
+      #slides-container { padding: 1.25rem 1rem 3.25rem !important; }
+      .slide { gap: 1rem; }
+      .slide h2 { line-height: 1.15; }
+      .slide [class*="p-8"] { padding: 1.1rem; }
+      .slide [class*="p-6"] { padding: 1rem; }
+      .nav-button { width: 2.25rem; height: 3.25rem; border-radius: .75rem; }
+      #prev-slide { left: .35rem !important; }
+      #next-slide { right: .35rem !important; }
+      #slide-counter { bottom: .45rem; }
+      .slide[data-title="Title"] > div:nth-child(2) { padding: 1.5rem !important; }
+    }
+    @media (max-height: 700px) {
+      #slides-container { padding-top: 1.5rem !important; padding-bottom: 2.5rem !important; }
+      .slide { min-height: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center p-0 m-0 overflow-hidden">
+
+  <!-- FULLSCREEN PROJECTOR VIEWPORT -->
+  <main id="slide-viewport" class="w-screen h-screen flex items-center justify-center relative overflow-hidden bg-white">
+    
+    <!-- SLIDE NAVIGATION -->
+    <button id="prev-slide" onclick="prevSlide()" type="button" aria-label="Previous slide" title="Previous slide" class="nav-button absolute left-4 top-1/2 -translate-y-1/2 z-50">
+      <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+    </button>
+    <button id="next-slide" onclick="nextSlide()" type="button" aria-label="Next slide" title="Next slide" class="nav-button absolute right-4 top-1/2 -translate-y-1/2 z-50">
+      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+    </button>
+    <div id="slide-counter" aria-live="polite">Slide 1 / 12</div>
+
+    <!-- SLIDES CONTAINER (Full viewport, no footers) -->
+    <div id="slides-container" class="w-full h-full flex flex-col justify-between p-8 sm:p-12 lg:p-16 overflow-y-auto custom-scroll relative">
+
+      <!-- =========================================================
+           SLIDE 1: DOMINANT TITLE SLIDE
+           ========================================================= -->
+      <section class="slide active flex-col justify-between h-full" data-title="Title">
+        <div></div> <!-- Spacer -->
+
+        <div class="my-auto space-y-8 max-w-6xl bg-slate-900 p-12 sm:p-16 rounded-3xl shadow-2xl border border-slate-800 text-center">
+          <h1 class="text-6xl sm:text-8xl font-extrabold tracking-tight leading-[1.05]">
+            <span class="rev-glow-white inline-block">RevSense</span>
+          </h1>
+          <p class="text-2xl sm:text-3xl text-blue-400 font-bold leading-relaxed max-w-4xl mx-auto">
+            Acoustic Motorcycle RPM Estimation Using Digital Signal Processing
+          </p>
+          <p class="text-base sm:text-lg text-slate-300 font-normal max-w-3xl mx-auto">
+            Non-contact rotational speed extraction via Fast Fourier Transform and harmonic-comb spectral analysis.
+          </p>
+        </div>
+
+        <div class="pt-4 text-center">
+          <p class="text-xs uppercase font-extrabold text-blue-600 tracking-widest mb-2">Project Team</p>
+          <p class="text-xl sm:text-2xl text-slate-900 font-extrabold tracking-wide">
+            Anurag Ajay &bull; Karthik P G &bull; P R Sooryanarayan &bull; Sivadev S &bull; Sweta Ganguly
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 2: MOTIVATION & PROBLEM STATEMENT
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Motivation & Problem">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">01 / Motivation & Problem</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Non-Contact Engine Speed Estimation</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-auto">
+          <div class="bg-slate-50 border border-slate-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="font-bold text-blue-900 text-lg flex items-center gap-2"><i class="fa-solid fa-lightbulb text-blue-600"></i> Motivation</h3>
+            <ul class="space-y-3 text-base text-slate-700 font-medium">
+              <li>&bull; Traditional RPM meters require physical sensors or ECU wiring.</li>
+              <li>&bull; Exhaust and engine sounds inherently carry periodic rotational signatures.</li>
+              <li>&bull; Enables software-based, non-contact frequency analysis.</li>
+            </ul>
+          </div>
+
+          <div class="bg-blue-50/50 border border-blue-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="font-bold text-blue-900 text-lg flex items-center gap-2"><i class="fa-solid fa-triangle-exclamation text-blue-600"></i> Challenges & Scope</h3>
+            <ul class="space-y-3 text-base text-slate-700 font-medium">
+              <li>&bull; <strong>Harmonic Dominance:</strong> Overtone peaks often eclipse fundamentals.</li>
+              <li>&bull; <strong>Octave Ambiguity:</strong> Naive peak detection causes doubled RPM errors.</li>
+              <li>&bull; <em>Scope: Analytical diagnostic tool, not a factory tachometer replacement.</em></li>
+            </ul>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 3: OBJECTIVES
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Objectives">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">02 / Objectives</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Core Project Goals</h2>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 my-auto">
+          <div class="bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">1</div>
+            <h3 class="font-bold text-slate-900 text-base">Signal Acquisition</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Support multi-bike datasets (Yamaha MT-15, Apache 160, Passion Plus) and custom WAV uploads.</p>
+          </div>
+          <div class="bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">2</div>
+            <h3 class="font-bold text-slate-900 text-base">DSP & Harmonic Analysis</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Apply windowed FFT and harmonic-comb scoring to extract fundamental firing frequency \(f_0\).</p>
+          </div>
+          <div class="bg-white border border-slate-200 p-8 rounded-3xl shadow-sm space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg">3</div>
+            <h3 class="font-bold text-slate-900 text-base">Validation & Dashboard</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Track steady/revving states, visualise trajectories, and compare against tachometer reference RPM.</p>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 4: LITERATURE REVIEW
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Literature Review">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">03 / Literature Review</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Prior Research & Theoretical Basis</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
+          <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl space-y-3 shadow-sm">
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800">Shan et al. (2020)</span>
+            <h3 class="text-base font-bold text-slate-900">Non-Contact Speed Measurement</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Demonstrated that acoustic and vibration signals carry periodic engine rotation signatures.</p>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl space-y-3 shadow-sm">
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800">Fosalau et al. (2022)</span>
+            <h3 class="text-base font-bold text-slate-900">Audio-Based RPM Estimation</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Investigated rotational speed estimation from recorded engine audio and harmonic complexity.</p>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl space-y-3 shadow-sm">
+            <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-100 text-blue-800">Oppenheim & Schafer</span>
+            <h3 class="text-base font-bold text-slate-900">Discrete-Time Signal Processing</h3>
+            <p class="text-sm text-slate-600 leading-relaxed">Establishes DFT/FFT properties and Hann windowing for spectral leakage suppression.</p>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 5: SYSTEM ARCHITECTURE & WORKFLOW
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Architecture">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">04 / System Architecture & Workflow</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">End-to-End Processing Pipeline</h2>
+        </div>
+
+        <div class="my-auto space-y-6">
+          <div class="grid grid-cols-3 sm:grid-cols-5 gap-3 text-center text-xs font-mono">
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-file-audio text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">1. Audio Input</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-sliders text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">2. Preprocessing</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-table-columns text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">3. Windowing</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-chart-column text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">4. FFT Analysis</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-wand-magic-sparkles text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">5. Harmonic Comb</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-gauge-high text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">6. RPM Law</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-shield-check text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">7. Quality Checks</strong>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-sm">
+              <i class="fa-solid fa-list-check text-blue-600 mb-2 text-base"></i>
+              <strong class="block text-slate-900 text-sm">8. Results Summary</strong>
+            </div>
+            <div class="bg-blue-600 text-white p-4 rounded-2xl col-span-2 shadow-md flex flex-col justify-center">
+              <i class="fa-solid fa-desktop text-sky-200 mb-1 text-base"></i>
+              <strong class="block text-white text-sm">9. Streamlit Dashboard UI</strong>
+            </div>
+          </div>
+          <p class="text-sm text-slate-500 text-center font-medium">Reference RPM enters solely at the final comparison/validation stage, not as a required input for estimation.</p>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 6: METHODOLOGY (DSP & HARMONIC COMB)
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Methodology">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">05 / Methodology</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">DSP & Harmonic-Comb Estimation</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-auto">
+          <div class="bg-slate-50 border border-slate-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="text-base font-bold text-blue-900">Signal Preparation & FFT</h3>
+            <div class="space-y-3 text-sm text-slate-700">
+              <p>&bull; Mono conversion: <span class="math-box">\(x_{\text{mono}}[n] = \frac{x_L[n] + x_R[n]}{2}\)</span></p>
+              <p>&bull; DC removal: <span class="math-box">\(x_{\text{zm}}[n] = x[n] - \mu\)</span></p>
+              <p>&bull; Hann window: <span class="math-box">\(w[n] = 0.5\left(1 - \cos\left(\frac{2\pi n}{N-1}\right)\right)\)</span></p>
+              <p>&bull; FFT spectrum: <span class="math-box">\(X[k] = \sum_{n=0}^{N-1} y[n] e^{-j 2\pi kn / N}\)</span></p>
+            </div>
+          </div>
+
+          <div class="bg-blue-50/50 border border-blue-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="text-base font-bold text-blue-900">Harmonic-Comb Scoring & RPM Law</h3>
+            <div class="space-y-3 text-sm text-slate-700">
+              <p>&bull; Harmonic weight: <span class="math-box">\(w_h = \frac{1}{h^{0.65}}\)</span></p>
+              <p>&bull; Combined score: <span class="math-box">\(S(f_0) = \frac{\sum w_h A_h}{\sum w_h}\)</span></p>
+              <p>&bull; 4-Stroke RPM Law: <span class="math-box">\(\text{RPM} = 120 \cdot f_0\)</span></p>
+              <p>&bull; Prevents octave doubling (e.g., locking onto <span class="math-box">\(2f_0\)</span>).</p>
+            </div>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 7: WEB APP SHOWCASE 1 (DATASETS & CONTROLS)
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Web App Showcase 1">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">06 / System Implementation</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Streamlit Dashboard & Dataset Selection</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 my-auto items-center">
+          <div class="md:col-span-7">
+            <div class="w-full h-[360px] rounded-3xl border-2 border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center p-6 shadow-sm overflow-hidden relative">
+              <img src="assets/dashboard.png" class="w-full h-full object-contain rounded-2xl" onerror="this.onerror=null; this.src='https://placehold.co/800x450/f1f5f9/1e3a8a?text=Place+dashboard.png+in+assets/+folder';" />
+            </div>
+            <p class="text-xs text-slate-500 text-center mt-2 font-mono">Loading from <code class="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600">assets/dashboard.png</code></p>
+          </div>
+          <div class="md:col-span-5 space-y-4 text-base text-slate-700">
+            <p class="font-bold text-slate-900 text-lg">Supported Datasets:</p>
+            <ul class="space-y-3 text-sm font-medium">
+              <li class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">Yamaha MT-15 (Steady & Revving)</li>
+              <li class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">TVS Apache RTR 160 4V (Idle, Rev, 5000 RPM)</li>
+              <li class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">Hero Honda Passion Plus (Idle & Revving)</li>
+              <li class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">Custom Audio Upload (.WAV)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 8: WEB APP SHOWCASE 2 (SPECTRUM & REVVING)
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Web App Showcase 2">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">07 / System Implementation</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Signal Spectra & Revving Trajectories</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-auto">
+          <div class="space-y-2">
+            <span class="text-sm font-bold text-slate-700">1. FFT Magnitude Spectrum & Peaks</span>
+            <div class="w-full h-[280px] rounded-3xl border-2 border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center p-4 shadow-sm overflow-hidden">
+              <img src="assets/spectrum.png" class="w-full h-full object-contain rounded-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x350/f1f5f9/1e3a8a?text=Place+spectrum.png+in+assets/+folder';" />
+            </div>
+            <p class="text-xs text-slate-400 text-center font-mono">assets/spectrum.png</p>
+          </div>
+
+          <div class="space-y-2">
+            <span class="text-sm font-bold text-slate-700">2. Revving Curve & Quality Table</span>
+            <div class="w-full h-[280px] rounded-3xl border-2 border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-center p-4 shadow-sm overflow-hidden">
+              <img src="assets/revving.png" class="w-full h-full object-contain rounded-2xl" onerror="this.onerror=null; this.src='https://placehold.co/600x350/f1f5f9/1e3a8a?text=Place+revving.png+in+assets/+folder';" />
+            </div>
+            <p class="text-xs text-slate-400 text-center font-mono">assets/revving.png</p>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 9: EXPERIMENTAL RESULTS
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Experimental Results">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">08 / Experimental Results</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Steady-RPM Validation & Accuracy Metrics</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 my-auto items-center">
+          <div class="md:col-span-7 overflow-x-auto border border-slate-200 rounded-3xl shadow-sm">
+            <table class="w-full text-sm text-left font-mono">
+              <thead class="bg-blue-600 text-white">
+                <tr><th class="p-3.5">Measured</th><th class="p-3.5">Estimated</th><th class="p-3.5">Error</th><th class="p-3.5">Error (%)</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-medium">
+                <tr><td class="p-3.5">1625 RPM</td><td class="p-3.5 text-blue-700 font-bold">1530</td><td class="p-3.5">95</td><td class="p-3.5">5.85%</td></tr>
+                <tr><td class="p-3.5">2250 RPM</td><td class="p-3.5 text-blue-700 font-bold">2120</td><td class="p-3.5">130</td><td class="p-3.5">5.78%</td></tr>
+                <tr><td class="p-3.5">3200 RPM</td><td class="p-3.5 text-blue-700 font-bold">3140</td><td class="p-3.5">60</td><td class="p-3.5">1.88%</td></tr>
+                <tr><td class="p-3.5">4000 RPM</td><td class="p-3.5 text-blue-700 font-bold">4080</td><td class="p-3.5">80</td><td class="p-3.5">2.00%</td></tr>
+                <tr class="bg-blue-50 font-bold"><td class="p-3.5">5000 RPM &starf;</td><td class="p-3.5 text-blue-700">5040</td><td class="p-3.5">40</td><td class="p-3.5 text-blue-600">0.80%</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="md:col-span-5 grid grid-cols-2 gap-4 text-center">
+            <div class="bg-blue-600 text-white p-6 rounded-3xl shadow-md flex flex-col justify-center">
+              <p class="text-xs uppercase font-mono text-blue-100 mb-1">MAPE</p>
+              <p class="text-3xl font-extrabold">3.26%</p>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-center">
+              <p class="text-xs uppercase font-mono text-slate-500 mb-1">MAE</p>
+              <p class="text-3xl font-extrabold text-blue-700">81 <span class="text-sm">RPM</span></p>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-center">
+              <p class="text-xs uppercase font-mono text-slate-500 mb-1">RMSE</p>
+              <p class="text-3xl font-extrabold text-slate-900">86.63</p>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 p-6 rounded-3xl shadow-sm flex flex-col justify-center">
+              <p class="text-xs uppercase font-mono text-slate-500 mb-1">Pass Rate</p>
+              <p class="text-3xl font-extrabold text-blue-700">100%</p>
+            </div>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 10: CONCLUSION & FUTURE SCOPE
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Conclusion & Future">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">09 / Conclusion & Future Scope</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Summary & Next Steps</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-auto">
+          <div class="bg-slate-50 border border-slate-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="font-bold text-slate-900 text-base"><i class="fa-solid fa-flag-checkered text-blue-600 mr-2"></i> Conclusion</h3>
+            <ul class="space-y-3 text-sm text-slate-700 font-medium">
+              <li>&bull; Feasibility proven: Non-contact DSP achieved <strong>3.26% MAPE</strong>.</li>
+              <li>&bull; Dual-mode flexibility handles steady and revving sweeps.</li>
+              <li>&bull; Transparent UI makes spectra and harmonic scores inspectable.</li>
+            </ul>
+          </div>
+          <div class="bg-blue-50/50 border border-blue-200 p-8 rounded-3xl space-y-4 shadow-sm">
+            <h3 class="font-bold text-slate-900 text-base"><i class="fa-solid fa-rocket text-blue-600 mr-2"></i> Future Scope</h3>
+            <ul class="space-y-3 text-sm text-slate-700 font-medium">
+              <li>&bull; Validate with larger labelled datasets across bike models.</li>
+              <li>&bull; Implement real-time live microphone input mode.</li>
+              <li>&bull; Explore robust noise reduction and mobile deployment.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 11: REFERENCES
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="References">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">10 / References</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">Key Literature & Foundation</h2>
+        </div>
+
+        <div class="my-auto space-y-4 max-w-4xl">
+          <div class="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-1">
+            <p class="text-sm font-bold text-blue-950">[1] X. Shan, L. Tang, H. Wen, R. Martinek, and J. Smulko</p>
+            <p class="text-sm text-slate-700 font-medium">"Analysis of Vibration and Acoustic Signals for Noncontact Measurement of Engine Rotation Speed," <em>Sensors</em>, vol. 20, no. 3, 2020.</p>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-1">
+            <p class="text-sm font-bold text-blue-950">[2] C. Fosalau, G. Maties, and C. Zet</p>
+            <p class="text-sm text-slate-700 font-medium">"Engine rotational speed estimation using audio recordings and machine learning algorithms," <em>Proc. 25th IMEKO TC4 Symp.</em>, 2022.</p>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-1">
+            <p class="text-sm font-bold text-blue-950">[3] M. H. Mohd Ghazali and W. Rahiman</p>
+            <p class="text-sm text-slate-700 font-medium">"Vibration Analysis for Machine Monitoring and Diagnosis: A Systematic Review," <em>Shock and Vibration</em>, 2021.</p>
+          </div>
+        </div>
+
+        <div></div>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 12: STATIC PROFESSIONAL THANK YOU SLIDE
+           ========================================================= -->
+      <section class="slide flex-col justify-center items-center h-full text-center space-y-8 bg-slate-900 rounded-3xl p-16 text-white shadow-2xl" data-title="Thank You">
+        <div class="space-y-4 my-auto">
+          <h1 class="text-7xl sm:text-9xl font-extrabold tracking-tight text-white">
+            THANK YOU
+          </h1>
+          <p class="text-slate-400 text-lg font-medium tracking-wide">RevSense Project Presentation</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- JAVASCRIPT ENGINE -->
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const totalSlides = slides.length;
+    let currentSlide = 0;
+
+    function updateSlideState() {
+      slides.forEach((slide, idx) => {
+        const isActive = idx === currentSlide;
+        slide.classList.toggle('active', isActive);
+        slide.setAttribute('aria-hidden', String(!isActive));
+      });
+      const counter = document.getElementById('slide-counter');
+      if (counter) counter.textContent = `Slide ${currentSlide + 1} / ${totalSlides}`;
+      const previousButton = document.getElementById('prev-slide');
+      const nextButton = document.getElementById('next-slide');
+      if (previousButton) previousButton.disabled = currentSlide === 0;
+      if (nextButton) nextButton.disabled = currentSlide === totalSlides - 1;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        currentSlide++;
+        updateSlideState();
+      }
+    }
+    function prevSlide() {
+      if (currentSlide > 0) {
+        currentSlide--;
+        updateSlideState();
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      const target = e.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault(); nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault(); prevSlide();
+      } else if (e.key === 'Home') {
+        currentSlide = 0; updateSlideState();
+      } else if (e.key === 'End') {
+        currentSlide = totalSlides - 1; updateSlideState();
+      }
+    });
+
+    updateSlideState();
+  </script>
+</body>
+</html>

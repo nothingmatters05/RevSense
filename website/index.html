@@ -131,6 +131,38 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
     }
+
+    /* LARGE, PRESENTATION-ROOM TYPOGRAPHY */
+    #slides-container .slide h1 { font-size: clamp(3.8rem, 6.5vw, 7rem) !important; line-height: 1.05 !important; }
+    #slides-container .slide h2 { font-size: clamp(2.25rem, 3.2vw, 3.35rem) !important; line-height: 1.12 !important; }
+    #slides-container .slide h3 { font-size: clamp(1.45rem, 1.8vw, 1.9rem) !important; line-height: 1.2 !important; }
+    #slides-container .slide .text-xs { font-size: clamp(.95rem, 1.05vw, 1.1rem) !important; line-height: 1.45 !important; }
+    #slides-container .slide .text-sm { font-size: clamp(1.08rem, 1.25vw, 1.3rem) !important; line-height: 1.5 !important; }
+    #slides-container .slide .text-base { font-size: clamp(1.2rem, 1.4vw, 1.45rem) !important; line-height: 1.5 !important; }
+    #slides-container .slide .text-lg { font-size: clamp(1.4rem, 1.7vw, 1.75rem) !important; line-height: 1.4 !important; }
+    #slides-container .slide .text-xl { font-size: clamp(1.55rem, 1.9vw, 2rem) !important; line-height: 1.35 !important; }
+    #slides-container .slide .text-2xl { font-size: clamp(1.8rem, 2.2vw, 2.3rem) !important; line-height: 1.3 !important; }
+    #slides-container .slide .text-3xl { font-size: clamp(2.1rem, 2.8vw, 2.8rem) !important; line-height: 1.2 !important; }
+    #slides-container .slide .text-4xl { font-size: clamp(2.4rem, 3.2vw, 3.3rem) !important; line-height: 1.15 !important; }
+    #slides-container .slide .text-6xl { font-size: clamp(4rem, 6vw, 6rem) !important; }
+    #slides-container .slide .text-7xl { font-size: clamp(4.5rem, 7vw, 7rem) !important; }
+    #slides-container .slide .text-8xl { font-size: clamp(5rem, 8vw, 8rem) !important; }
+    #slides-container .slide .text-9xl { font-size: clamp(5.5rem, 9vw, 9rem) !important; }
+    #slides-container .slide .math-box { font-size: clamp(1.15rem, 1.35vw, 1.45rem) !important; padding: .35rem .6rem; line-height: 1.65; white-space: normal; }
+    #slides-container .slide mjx-container { font-size: 125% !important; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+    #slides-container .slide li { line-height: 1.55; }
+    #slides-container .slide table { font-size: clamp(1.05rem, 1.2vw, 1.25rem) !important; }
+    #slides-container .slide th, #slides-container .slide td { padding: .85rem !important; }
+    #slides-container .slide .website-shot { width: 100%; height: clamp(360px, 52vh, 620px); object-fit: contain; background: #f8fafc; }
+    @media (max-width: 800px) {
+      #slides-container .slide h2 { font-size: clamp(1.9rem, 5vw, 2.5rem) !important; }
+      #slides-container .slide h3 { font-size: 1.35rem !important; }
+      #slides-container .slide .text-sm { font-size: 1.05rem !important; }
+      #slides-container .slide .text-base { font-size: 1.1rem !important; }
+      #slides-container .slide .math-box { font-size: 1rem !important; }
+      #slides-container .slide .website-shot { height: 340px; }
+    }
+
   </style>
 </head>
 <body class="h-screen w-screen flex items-center justify-center p-0 m-0 overflow-hidden">
@@ -145,7 +177,7 @@
     <button id="next-slide" onclick="nextSlide()" type="button" aria-label="Next slide" title="Next slide" class="nav-button absolute right-4 top-1/2 -translate-y-1/2 z-50">
       <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
     </button>
-    <div id="slide-counter" aria-live="polite">Slide 1 / 12</div>
+    <div id="slide-counter" aria-live="polite">Slide 1 / 14</div>
 
     <!-- SLIDES CONTAINER (Full viewport, no footers) -->
     <div id="slides-container" class="w-full h-full flex flex-col justify-between p-8 sm:p-12 lg:p-16 overflow-y-auto custom-scroll relative">
@@ -522,8 +554,45 @@
         <div></div>
       </section>
 
+
       <!-- =========================================================
-           SLIDE 12: STATIC PROFESSIONAL THANK YOU SLIDE
+           SLIDE 12: WEBSITE SCREENSHOT SHOWCASE — MAIN INTERFACE
+           Replace assets/website-home.png with a screenshot of the main website.
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Website Screenshot 1">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">11 / Website Showcase</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">RevSense Website — Main Interface</h2>
+          <p class="text-base text-slate-600 mt-2">A look at the website interface, dataset controls, and RPM estimation workflow.</p>
+        </div>
+        <div class="my-auto w-full bg-slate-50 border-2 border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
+          <img class="website-shot rounded-2xl" src="assets/website-home.png"
+               alt="Screenshot of the RevSense website main interface"
+               onerror="this.onerror=null; this.src='https://placehold.co/1400x700/f1f5f9/1e3a8a?text=Add+your+screenshot+as+assets%2Fwebsite-home.png';" />
+        </div>
+        <p class="text-sm text-slate-500 text-center mt-2">Image file: <code>assets/website-home.png</code> — replace with your own website screenshot.</p>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 13: WEBSITE SCREENSHOT SHOWCASE — ANALYSIS / RESULTS
+           Replace assets/website-analysis.png with a second screenshot.
+           ========================================================= -->
+      <section class="slide flex-col justify-between h-full" data-title="Website Screenshot 2">
+        <div>
+          <span class="text-xs font-mono font-bold uppercase text-blue-600 tracking-wider">12 / Website Showcase</span>
+          <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 mt-1">RevSense Website — Analysis & Results</h2>
+          <p class="text-base text-slate-600 mt-2">Show the FFT spectrum, harmonic-comb analysis, RPM output, or validation dashboard.</p>
+        </div>
+        <div class="my-auto w-full bg-slate-50 border-2 border-slate-200 rounded-3xl p-4 sm:p-6 shadow-sm">
+          <img class="website-shot rounded-2xl" src="assets/website-analysis.png"
+               alt="Screenshot of RevSense signal analysis and RPM results"
+               onerror="this.onerror=null; this.src='https://placehold.co/1400x700/f1f5f9/1e3a8a?text=Add+your+screenshot+as+assets%2Fwebsite-analysis.png';" />
+        </div>
+        <p class="text-sm text-slate-500 text-center mt-2">Image file: <code>assets/website-analysis.png</code> — replace with your second website screenshot.</p>
+      </section>
+
+      <!-- =========================================================
+           SLIDE 14: STATIC PROFESSIONAL THANK YOU SLIDE
            ========================================================= -->
       <section class="slide flex-col justify-center items-center h-full text-center space-y-8 bg-slate-900 rounded-3xl p-16 text-white shadow-2xl" data-title="Thank You">
         <div class="space-y-4 my-auto">

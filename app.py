@@ -1,5 +1,5 @@
 from pathlib import Path
-import io, base64, json, mimetypes, textwrap
+import io, base64, json, mimetypes, textwrap, hashlib, shutil, subprocess
 import numpy as np
 import pandas as pd
 import soundfile as sf
@@ -14,21 +14,66 @@ AUDIO=ROOT/'audio'; RESULTS=ROOT/'results'; ASSETS=ROOT/'assets'
 for d in (AUDIO, RESULTS, ASSETS): d.mkdir(exist_ok=True)
 st.set_page_config(page_title='RevSense | Acoustic RPM Lab', page_icon='🏁', layout='wide', initial_sidebar_state='collapsed')
 
-DATA=[
- {'label':'1500–1750 RPM','file':'1500-1750.wav','kind':'steady','ref':1625,'note':'Low-speed steady recording'},
- {'label':'2250 RPM','file':'2250.wav','kind':'steady','ref':2250,'note':'Steady recording'},
- {'label':'3200 RPM','file':'3200.wav','kind':'steady','ref':3200,'note':'Steady recording'},
- {'label':'4000 RPM','file':'4000.wav','kind':'steady','ref':4000,'note':'Steady recording'},
- {'label':'5000 RPM','file':'5000.wav','kind':'steady','ref':5000,'note':'Steady recording'},
- {'label':'Revving run','file':'Revving.wav','kind':'revving','ref':None,'note':'Variable speed · idle to limiter'},
-]
-PREVIOUS={
- '1500-1750.wav':(1530,1500,1562,10,10),
- '2250.wav':(2120,2072,2148,7,7),
- '3200.wav':(3140,3052,3212,7,7),
- '4000.wav':(4080,4036,4080,10,10),
- '5000.wav':(5040,5028,5086,8,8),
+# Dataset folders: audio/mt15, audio/rtr160 and audio/passionplus.
+BIKES = {
+    'mt15': {
+        'label': 'Yamaha MT-15', 'folder': 'mt15', 'photo': 'mt15.jpg',
+        'short': 'MT-15',
+        'profile_title': '155 cc · Liquid-cooled',
+        'description': 'Fuel-injected, single-cylinder, 4-stroke SOHC engine with 4 valves. These recordings capture its sound at steady speeds and during acceleration.',
+        'specs': [('18.4 PS','13.5 kW · 10,000 rpm'),('14.1 Nm','Peak torque · 7,500 rpm'),('4 valves','2 intake + 2 exhaust'),('6-speed','Constant-mesh gearbox'),('Liquid','Cooling system'),('FI','Fuel injection'),('58 × 58.7 mm','Bore × stroke'),('11.6:1','Compression ratio')],
+    },
+    'rtr160': {
+        'label': 'TVS Apache RTR 160 4V', 'folder': 'rtr160', 'photo': 'rtr160.jpg',
+        'short': 'APACHE RTR 160 4V',
+        'profile_title': 'Apache RTR 160 4V',
+        'description': 'TVS Apache RTR 160 4V engine recordings. Select one of the recordings stored in this bike’s audio folder to analyse its acoustic RPM.',
+        'specs': [('159.7 cc','Engine displacement'),('17.55 PS','Maximum power · model dependent'),('14.73 Nm','Maximum torque · model dependent'),('4 valves','2 intake + 2 exhaust'),('Oil-cooled','Cooling system'),('5-speed','Gearbox'),('4-stroke','Engine cycle'),('FI','Fuel injection · variant dependent')],
+    },
+    'passionplus': {
+        'label': 'Hero Honda Passion Plus', 'folder': 'passionplus', 'photo': 'passionplus.jpeg',
+        'short': 'PASSION PLUS',
+        'profile_title': 'Passion Plus',
+        'description': 'Hero Honda Passion Plus engine recordings. Select a recording from this bike’s folder to analyse its acoustic RPM.',
+        'specs': [('97.2 cc','Engine displacement'),('7.5 PS','Maximum power · model dependent'),('7.95 Nm','Maximum torque · model dependent'),('Air-cooled','Cooling system'),('Single-cylinder','Engine type'),('4-speed','Gearbox'),('4-stroke','Engine cycle'),('Carburetor','Typical for the 2005 model')],
+    },
 }
+PREVIOUS = {}
+
+
+def reference_rpm_from_filename(filename):
+    # Use a numeric WAV filename as measured RPM; ranges use their midpoint.
+    stem = Path(filename).stem
+    if stem.lower() == 'revving':
+        return None
+    import re
+    numbers = [float(x) for x in re.findall(r'\d+(?:\.\d+)?', stem)]
+    if not numbers:
+        return None
+    return float(sum(numbers) / len(numbers))
+
+
+def discover_recordings(bike_key):
+    folder = AUDIO / BIKES[bike_key]['folder']
+    recordings = []
+    if not folder.exists():
+        return recordings
+    wavs = sorted(folder.glob('*.wav'), key=lambda p: (p.stem.lower() == 'revving', p.name.lower()))
+    for wav_path in wavs:
+        revving = wav_path.stem.lower() == 'revving'
+        ref = reference_rpm_from_filename(wav_path.name)
+        if revving:
+            label, note, kind = 'Revving run', 'Variable-speed recording', 'revving'
+        elif ref is not None:
+            label = f'{ref:,.0f} RPM' if ref.is_integer() else f'{ref:,.1f} RPM'
+            note, kind = 'Measured RPM taken from filename', 'steady'
+        else:
+            label, note, kind = wav_path.stem, 'Reference RPM not available in filename', 'steady'
+        recordings.append({
+            'label': label, 'file': wav_path.name, 'path': wav_path,
+            'kind': kind, 'ref': ref, 'note': note, 'bike_key': bike_key,
+        })
+    return recordings
 
 st.markdown('''<style>
 :root{color-scheme:dark}.stApp{background:linear-gradient(180deg,#0b1220,#101b2d 42%,#0b1220);color:#edf4ff}
@@ -92,7 +137,7 @@ def make_spectrum(y,sr,max_hz=1200,f0=None):
         ax.legend(facecolor='#191a1e',edgecolor='#44444b',labelcolor='white',fontsize=8)
     ax.set_xlabel('Frequency (Hz)');ax.set_ylabel('Relative magnitude (dB)');fig.tight_layout();return fig
 
-def gauge_html(value, label='MEASURED RPM', actual=None, revving=False, audio_path=None, video_path=None, trace=None, loop=True):
+def gauge_html(value, label='MEASURED RPM', actual=None, revving=False, audio_path=None, video_path=None, trace=None, loop=True, show_video=True):
     # A self-contained HTML player lets media events and the needle share one browser clock.
     def data_uri(path):
         if not path or not path.exists(): return ''
@@ -111,15 +156,15 @@ def gauge_html(value, label='MEASURED RPM', actual=None, revving=False, audio_pa
         else:
             mime = mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
         return f'data:{mime};base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
-    aud=data_uri(audio_path); vid=data_uri(video_path)
+    aud=data_uri(audio_path); vid=data_uri(video_path) if show_video else ''
     trace_json=json.dumps(trace or [])
     max_rpm=12000 if revving else 6500
     actual_html=(f'<div class="metric"><span>ACTUAL RPM · MEASURED</span><b>{actual:,.0f}<small> RPM</small></b></div>' if actual is not None else '')
     if not aud:
         return f'''<div style="background:#101114;color:#ddd;border:1px solid #333;border-radius:14px;padding:24px;font-family:Arial">Audio file is not embedded. Add the WAV to the audio/ folder. Gauge estimate: <b>{value or 0:,.0f} RPM</b>.</div>'''
     return f'''<!doctype html><html><head><meta charset="utf-8"><style>
-    *{{box-sizing:border-box}}body{{margin:0;background:#0d1727;color:#fff;font-family:Arial,sans-serif}}.wrap{{border:1px solid #294b75;border-radius:14px;background:radial-gradient(ellipse at 50% 0%,#172f4e,#101a2a 68%);padding:14px}}.playgrid{{display:grid;grid-template-columns:minmax(0,{'1fr' if revving else '1.6fr'}) minmax(0,1fr);gap:12px;align-items:stretch}}.gauges{{display:grid;grid-template-columns:repeat({2 if actual is not None else 1},minmax(0,1fr));gap:12px}}.gcard{{background:#122035;border:1px solid #2b4564;border-radius:12px;padding:10px;min-width:0}}canvas{{width:100%;height:auto;display:block;max-height:430px}}.metric span{{font-size:10px;letter-spacing:1.7px;color:#82bdff;font-weight:bold}}.metric b{{display:block;font-size:clamp(25px,4vw,38px);letter-spacing:-1px;margin-top:4px}}.metric small{{font-size:12px;color:#aaa}}.controls{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}}button{{background:#1e5d99;color:#fff;border:1px solid #75baff;border-radius:9px;padding:11px 18px;font-weight:800;cursor:pointer}}button:disabled{{opacity:.45;cursor:not-allowed}}.state{{font-size:12px;color:#bcbcc4}}video{{width:100%;height:auto;max-height:390px;aspect-ratio:16/9;object-fit:contain;background:#050505;border-radius:10px;margin:0;display:block}}.videobox{{border:1px solid #2b4564;border-radius:12px;padding:10px;background:#122035;min-width:0}}.videotitle{{font-size:10px;letter-spacing:1.7px;color:#82bdff;font-weight:bold;margin-bottom:8px}}@media(max-width:760px){{.playgrid{{grid-template-columns:1fr}}.gauges{{grid-template-columns:repeat({2 if actual is not None else 1},minmax(0,1fr))}}}}.note{{font-size:11px;color:#8f9098;margin-top:9px}}@media(max-width:560px){{.gauges{{grid-template-columns:1fr}}}}
-    </style></head><body><div class="wrap"><div class="playgrid"><div><div class="gauges"><div class="gcard"><div class="metric"><span>{label}</span><b id="rpm">0<small> RPM</small></b></div><canvas id="g" width="480" height="300"></canvas></div>{('<div class="gcard">'+actual_html+'<canvas id="ga" width="480" height="300"></canvas></div>') if actual is not None else ''}</div><div class="controls"><button id="play">▶ PLAY RUN</button><button id="stop" style="background:#23364d;border-color:#45617f">■ STOP</button><span id="state" class="state">Ready · click play</span></div><audio id="a" preload="auto" src="{aud}"></audio><div class="note">The needle follows the audio timeline. The second dial shows your measured RPM for steady recordings.</div></div>{('<div class="videobox"><div class="videotitle">REFERENCE VIDEO · MUTED</div><video id="v" muted preload="auto" playsinline src="'+vid+'"></video></div>') if vid else '<div class="videobox"><div class="videotitle">REFERENCE VIDEO</div><div class="note">No matching video file was found for this recording.</div></div>'}</div>
+    *{{box-sizing:border-box}}body{{margin:0;background:#0d1727;color:#fff;font-family:Arial,sans-serif}}.wrap{{border:1px solid #294b75;border-radius:14px;background:radial-gradient(ellipse at 50% 0%,#172f4e,#101a2a 68%);padding:14px}}.playgrid{{display:grid;grid-template-columns:{'minmax(0,1fr)' if not show_video else ('minmax(0,1fr) minmax(0,1fr)' if revving else 'minmax(0,1.6fr) minmax(0,1fr)')};gap:12px;align-items:stretch}}.gauges{{display:grid;grid-template-columns:repeat({2 if actual is not None else 1},minmax(0,1fr));gap:12px}}.gcard{{background:#122035;border:1px solid #2b4564;border-radius:12px;padding:10px;min-width:0}}canvas{{width:100%;height:auto;display:block;max-height:430px}}.metric span{{font-size:10px;letter-spacing:1.7px;color:#82bdff;font-weight:bold}}.metric b{{display:block;font-size:clamp(25px,4vw,38px);letter-spacing:-1px;margin-top:4px}}.metric small{{font-size:12px;color:#aaa}}.controls{{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}}button{{background:#1e5d99;color:#fff;border:1px solid #75baff;border-radius:9px;padding:11px 18px;font-weight:800;cursor:pointer}}button:disabled{{opacity:.45;cursor:not-allowed}}.state{{font-size:12px;color:#bcbcc4}}video{{width:100%;height:auto;max-height:390px;aspect-ratio:16/9;object-fit:contain;background:#050505;border-radius:10px;margin:0;display:block}}.videobox{{border:1px solid #2b4564;border-radius:12px;padding:10px;background:#122035;min-width:0}}.videotitle{{font-size:10px;letter-spacing:1.7px;color:#82bdff;font-weight:bold;margin-bottom:8px}}@media(max-width:760px){{.playgrid{{grid-template-columns:1fr}}.gauges{{grid-template-columns:repeat({2 if actual is not None else 1},minmax(0,1fr))}}}}.note{{font-size:11px;color:#8f9098;margin-top:9px}}@media(max-width:560px){{.gauges{{grid-template-columns:1fr}}}}
+    </style></head><body><div class="wrap"><div class="playgrid"><div><div class="gauges"><div class="gcard"><div class="metric"><span>{label}</span><b id="rpm">0<small> RPM</small></b></div><canvas id="g" width="480" height="300"></canvas></div>{('<div class="gcard">'+actual_html+'<canvas id="ga" width="480" height="300"></canvas></div>') if actual is not None else ''}</div><div class="controls"><button id="play">▶ PLAY RUN</button><button id="stop" style="background:#23364d;border-color:#45617f">■ STOP</button><span id="state" class="state">Ready · click play</span></div><audio id="a" preload="auto" src="{aud}"></audio><div class="note">The needle follows the audio timeline. The second dial shows your measured RPM for steady recordings.</div></div>{(('<div class="videobox"><div class="videotitle">REFERENCE VIDEO · MUTED</div><video id="v" muted preload="auto" playsinline src="'+vid+'"></video></div>') if vid else '<div class="videobox"><div class="videotitle">REFERENCE VIDEO</div><div class="note">No matching video file was found for this recording.</div></div>') if show_video else ''}</div>
 <script>
 const audio=document.getElementById('a'),video=document.getElementById('v'),play=document.getElementById('play'),stop=document.getElementById('stop'),state=document.getElementById('state'),rpmText=document.getElementById('rpm');
 const maxRpm={max_rpm},target={float(value or 0)},trace={trace_json},isRev={str(revving).lower()},shouldLoop={str(loop).lower()};let running=false,raf=null,cycleStart=0,zeroStart=0,previous=0;
@@ -141,53 +186,215 @@ async function startCycle(){{if(running)return;running=true;play.disabled=true;s
 if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);}}audio.addEventListener('error',()=>{{const err=audio.error;state.textContent='Audio load error · '+(err?('code '+err.code+' '+({{1:'ABORTED',2:'NETWORK',3:'DECODE',4:'UNSUPPORTED'}}[err.code]||'')):'unknown');console.error('RevSense audio element error:',err,'source length:',audio.src.length);}});audio.addEventListener('canplay',()=>{{if(!running)state.textContent='Audio ready · click PLAY';}});audio.addEventListener('ended',()=>stopCycle(true));play.addEventListener('click',()=>startCycle());stop.addEventListener('click',()=>stopCycle(false));draw('g',0);draw('ga',0);
 </script></body></html>'''
 
-# Load known previous summaries as a transparent fallback when audio files are not present.
+# Show the recordings currently available in all three bike folders.
 def known_results():
     rows=[]
-    for d in DATA:
-        if d['file'] in PREVIOUS:
-            m,p10,p90,accepted,total=PREVIOUS[d['file']]
-            rows.append({'Dataset':d['label'],'File':d['file'],'Actual RPM (measured)':d['ref'],'Median estimate (RPM)':m,'P10 (RPM)':p10,'P90 (RPM)':p90,'Accepted windows':f'{accepted}/{total}','Status':'Previously analysed'})
-        else: rows.append({'Dataset':d['label'],'File':d['file'],'Actual RPM (measured)':'—','Median estimate (RPM)':'—','P10 (RPM)':'—','P90 (RPM)':'—','Accepted windows':'—','Status':'Waiting for WAV'})
+    for bike_key, bike in BIKES.items():
+        for d in discover_recordings(bike_key):
+            rows.append({'Bike':bike['label'],'Dataset':d['label'],'File':d['file'],
+                         'Actual RPM (measured)':d['ref'] if d['ref'] is not None else '—',
+                         'Median estimate (RPM)':'—','P10 (RPM)':'—','P90 (RPM)':'—',
+                         'Accepted windows':'—','Status':'Ready to analyse'})
+    if not rows:
+        rows.append({'Bike':'—','Dataset':'—','File':'No WAV files found',
+                     'Actual RPM (measured)':'—','Median estimate (RPM)':'—',
+                     'P10 (RPM)':'—','P90 (RPM)':'—','Accepted windows':'—',
+                     'Status':'Check audio/<bike-folder>/'})
     return pd.DataFrame(rows)
 
 st.markdown('''<div class="hero"><div class="eyebrow">DIGITAL SIGNAL PROCESSING · MOTORCYCLE ACOUSTICS</div><h1>REVSENSE<span style="color:#ed3342">.</span></h1><p>Hear the rev. See the RPM. RevSense turns engine sound into an RPM estimate using digital signal processing.</p><span class="pill">FFT + HARMONIC COMB</span><span class="pill">WINDOWED RPM TRACKING</span><span class="pill">AUDIO / VIDEO DEMO</span></div>''',unsafe_allow_html=True)
 
-heading('01','Test bike','Yamaha MT-15 · the engine behind our recordings.')
-vehicle_photo=ASSETS/'mt15.jpg'
-left,right=st.columns([1.05,1],gap='large')
-with left:
-    if vehicle_photo.exists():
-        photo_bytes=vehicle_photo.read_bytes()
-        photo_mime=mimetypes.guess_type(vehicle_photo.name)[0] or 'image/jpeg'
-        photo_uri=f'data:{photo_mime};base64,'+base64.b64encode(photo_bytes).decode('ascii')
-        st.markdown(f'<img class="engine-photo" src="{photo_uri}" alt="Yamaha MT-15 test motorcycle">',unsafe_allow_html=True)
+heading('01','Choose your test source','Choose one of the three bike datasets or upload your own audio. The analysis dashboard below keeps the same waveform, spectrum, gauges and window-level results.')
+source_keys = ['mt15', 'rtr160', 'passionplus', 'custom']
+source_labels = {
+    'mt15': ('🏁', 'YAMAHA MT-15', '155 cc · Liquid-cooled', 'Streetfighter sound profile'),
+    'rtr160': ('⚡', 'TVS APACHE RTR 160 4V', '159.7 cc · 4-valve', 'Performance street machine'),
+    'passionplus': ('🛠️', 'HERO HONDA PASSION PLUS', '97.2 cc · Air-cooled', 'Classic commuter engine'),
+    'custom': ('🎧', 'CUSTOM AUDIO', 'Your recording · Your test', 'Upload audio and optionally add reference RPM')
+}
+if 'source_key' not in st.session_state:
+    st.session_state.source_key = 'mt15'
+card_cols = st.columns(4, gap='medium')
+for col, key in zip(card_cols, source_keys):
+    icon, title, subtitle, desc = source_labels[key]
+    with col:
+        active = st.session_state.source_key == key
+        border = '#69b7ff' if active else '#2a4565'
+        glow = '0 0 22px #3889d955' if active else '0 0 0 transparent'
+        background = 'linear-gradient(145deg,#1b4166,#101b2b)' if active else 'linear-gradient(145deg,#172a41,#101827)'
+        st.markdown(
+            f'''<div style="min-height:148px;padding:16px 13px 12px;border:1px solid {border};border-radius:14px;background:{background};box-shadow:{glow};text-align:left;margin-bottom:8px">
+            <div style="font-size:1.8rem;margin-bottom:7px">{icon}</div>
+            <div style="font-weight:900;font-size:.88rem;letter-spacing:.025em;color:#f3f8ff;line-height:1.25">{title}</div>
+            <div style="color:#8dc5ff;font-weight:750;font-size:.75rem;margin-top:7px">{subtitle}</div>
+            <div style="color:#b5c7dd;font-size:.72rem;line-height:1.35;margin-top:5px">{desc}</div>
+            </div>''',
+            unsafe_allow_html=True
+        )
+        if st.button('✓ SELECTED' if active else 'EXPLORE →', key=f'source_{key}',
+                     use_container_width=True, type='primary' if active else 'secondary'):
+            st.session_state.source_key = key
+            st.session_state.pop(f'recording_choice_{key}', None)
+            st.rerun()
+
+source_key = st.session_state.source_key
+if source_key == 'custom':
+    heading('01A','Custom audio','Upload an engine recording. Optionally enter the measured tachometer RPM to compare it with the acoustic estimate.')
+    custom_upload = st.file_uploader(
+        'Choose an audio file',
+        type=['wav','mp3','m4a','aac','flac','ogg','aiff','aif','wma','webm'],
+        key='custom_audio_upload',
+        help='WAV, MP3, M4A, AAC, FLAC, OGG, AIFF and other listed formats are accepted. Formats unsupported by SoundFile are converted using FFmpeg if installed.'
+    )
+    custom_ref_enabled = st.checkbox(
+        'I know the actual measured RPM and want to compare it',
+        key='custom_ref_enabled'
+    )
+    custom_ref = None
+    if custom_ref_enabled:
+        custom_ref = float(st.number_input(
+            'Actual measured RPM (tachometer)',
+            min_value=1, max_value=30000, value=1500, step=50,
+            key='custom_reference_rpm',
+            help='Enter the measured RPM for this recording. Leave the checkbox off if you do not have a verified reference value.'
+        ))
+    if custom_upload is not None:
+        upload_bytes = custom_upload.getvalue()
+        upload_hash = hashlib.sha256(upload_bytes).hexdigest()[:16]
+        original_stem = Path(custom_upload.name).stem
+        custom_path = RESULTS / f'custom_{upload_hash}.wav'
+        raw_path = RESULTS / f'custom_{upload_hash}{Path(custom_upload.name).suffix.lower()}'
+        try:
+            if not custom_path.exists():
+                raw_path.write_bytes(upload_bytes)
+                converted = False
+                # First try SoundFile directly; this handles WAV, FLAC, OGG, AIFF,
+                # and any additional formats supported by the installed libsndfile.
+                try:
+                    samples, sample_rate = sf.read(io.BytesIO(upload_bytes), dtype='float32', always_2d=False)
+                    if samples.ndim == 2:
+                        samples = samples.mean(axis=1)
+                    if samples.ndim != 1 or len(samples) == 0 or not np.all(np.isfinite(samples)):
+                        raise ValueError('The uploaded file contains empty or invalid audio.')
+                    sf.write(str(custom_path), samples, int(sample_rate), subtype='PCM_16', format='WAV')
+                    converted = True
+                except Exception as soundfile_error:
+                    # If SoundFile cannot decode the format (commonly MP3/M4A),
+                    # use FFmpeg when available and convert to a standard PCM WAV.
+                    ffmpeg = shutil.which('ffmpeg')
+                    if not ffmpeg:
+                        raise ValueError(
+                            'This audio format could not be decoded directly. Install FFmpeg and add it to PATH, '
+                            'or upload a WAV, FLAC, OGG or AIFF file.'
+                        ) from soundfile_error
+                    result = subprocess.run(
+                        [ffmpeg, '-y', '-i', str(raw_path), '-vn', '-ac', '1',
+                         '-ar', '44100', '-c:a', 'pcm_s16le', str(custom_path)],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode != 0 or not custom_path.exists() or custom_path.stat().st_size == 0:
+                        message = (result.stderr or 'FFmpeg conversion failed')[-1200:]
+                        raise ValueError(f'Could not convert this file to WAV. {message}')
+                    converted = True
+                if not converted:
+                    raise ValueError('Could not convert the uploaded audio.')
+            custom_kind = 'revving' if 'revving' in original_stem.lower() else 'steady'
+            selected = {
+                'label': original_stem + ' · Custom Audio',
+                'file': custom_upload.name,
+                'path': custom_path,
+                'kind': custom_kind,
+                'ref': custom_ref,
+                'note': 'User-uploaded audio · measured RPM supplied by user' if custom_ref is not None else 'User-uploaded audio · no measured reference RPM supplied',
+                'bike_key': 'custom'
+            }
+            wav = custom_path
+            st.success(f'Audio ready: **{custom_upload.name}** · converted to WAV for analysis.')
+        except Exception as exc:
+            st.error(f'Could not prepare this audio file: {exc}')
+            selected = None
+            wav = None
     else:
-        st.markdown('''<div class="engine-photo" style="min-height:320px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:radial-gradient(ellipse at 50% 45%,#24476c,#101a2b 72%);height:100%;box-sizing:border-box"><div class="tag">TEST MOTORCYCLE</div><div style="font-size:clamp(2.5rem,5vw,4.4rem);font-weight:950;line-height:1.05;margin:.65rem 0;text-align:center">YAMAHA<br><span style="color:#82bdff">MT-15</span></div><svg viewBox="0 0 650 220" style="width:100%;max-height:185px" xmlns="http://www.w3.org/2000/svg"><circle cx="140" cy="160" r="52" fill="none" stroke="#a9bfd8" stroke-width="8"/><circle cx="140" cy="160" r="31" fill="none" stroke="#45617f" stroke-width="4"/><circle cx="490" cy="160" r="52" fill="none" stroke="#a9bfd8" stroke-width="8"/><circle cx="490" cy="160" r="31" fill="none" stroke="#45617f" stroke-width="4"/><path d="M140 160 L235 95 L330 160 L490 160 L405 82 L330 160 L265 160 L220 122 L178 128" fill="none" stroke="#63b0ff" stroke-width="13" stroke-linejoin="round"/><path d="M235 95 L290 65 L365 65 L405 82 L452 105 L490 160" fill="none" stroke="#eaf4ff" stroke-width="8" stroke-linecap="round"/><path d="M290 65 L260 42 L335 38 L365 65" fill="#17283d" stroke="#63b0ff" stroke-width="4"/><path d="M402 78 L435 53 L462 57" fill="none" stroke="#eee" stroke-width="7" stroke-linecap="round"/><path d="M215 120 L280 117 L310 150 L258 161 Z" fill="#2878ba"/><rect x="319" y="130" width="48" height="35" rx="6" fill="#7893b2" stroke="#eaf4ff" stroke-width="3"/><path d="M365 65 L400 35 L437 38" fill="none" stroke="#a9bfd8" stroke-width="5"/></svg><div class="muted">Test platform · engine sound recordings</div></div>''',unsafe_allow_html=True)
-with right:
-    st.markdown('''<div class="engine-card"><div><div class="tag">ENGINE PROFILE</div><h3 style="font-size:1.45rem;margin:.4rem 0">155 cc · Liquid-cooled</h3><p class="muted">Fuel-injected, single-cylinder, 4-stroke SOHC engine with 4 valves. These recordings capture its sound at steady speeds and during acceleration.</p><div class="spec-grid"><div class="spec-box"><div class="specnum">18.4 PS</div><div class="specunit">13.5 kW · 10,000 rpm</div></div><div class="spec-box"><div class="specnum">14.1 Nm</div><div class="specunit">Peak torque · 7,500 rpm</div></div><div class="spec-box"><div class="specnum">4 valves</div><div class="specunit">2 intake + 2 exhaust</div></div><div class="spec-box"><div class="specnum">6-speed</div><div class="specunit">Constant-mesh gearbox</div></div><div class="spec-box"><div class="specnum">Liquid</div><div class="specunit">Cooling system</div></div><div class="spec-box"><div class="specnum">FI</div><div class="specunit">Fuel injection</div></div><div class="spec-box"><div class="specnum">58 × 58.7 mm</div><div class="specunit">Bore × stroke</div></div><div class="spec-box"><div class="specnum">11.6:1</div><div class="specunit">Compression ratio</div></div></div></div><div class="smallnote" style="margin-top:14px">Test data: five steady-speed recordings and one revving recording.</div></div>''',unsafe_allow_html=True)
+        selected = None
+        wav = None
+    bike = None
+else:
+    bike = BIKES[source_key]
+    vehicle_photo = ASSETS / bike['photo']
+    # Resolve common image-extension variations so passionplus.jpeg and .jpg both work.
+    if not vehicle_photo.exists():
+        candidates = [ASSETS / f"{Path(bike['photo']).stem}{ext}" for ext in ('.jpeg', '.jpg', '.png', '.webp')]
+        vehicle_photo = next((candidate for candidate in candidates if candidate.exists()), vehicle_photo)
+    left, right = st.columns([1.05,1], gap='large')
+    with left:
+        if vehicle_photo.exists():
+            photo_bytes = vehicle_photo.read_bytes()
+            photo_mime = mimetypes.guess_type(vehicle_photo.name)[0] or 'image/jpeg'
+            photo_uri = f'data:{photo_mime};base64,' + base64.b64encode(photo_bytes).decode('ascii')
+            st.markdown(f'<img class="engine-photo" src="{photo_uri}" alt="{bike["label"]} test motorcycle">', unsafe_allow_html=True)
+        else:
+            title = bike['short']
+            st.markdown(f'''<div class="engine-photo" style="min-height:320px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:radial-gradient(ellipse at 50% 45%,#24476c,#101a2b 72%);height:100%;box-sizing:border-box"><div class="tag">TEST MOTORCYCLE</div><div style="font-size:clamp(2rem,4vw,3.5rem);font-weight:950;line-height:1.05;margin:.65rem 0;text-align:center">{title}</div><div style="font-size:4rem;margin:.5rem 0">🏍️</div><div class="muted">Test platform · engine sound recordings</div></div>''', unsafe_allow_html=True)
+    with right:
+        spec_html = ''.join(f'<div class="spec-box"><div class="specnum">{a}</div><div class="specunit">{b}</div></div>' for a,b in bike['specs'])
+        recordings_for_bike = discover_recordings(source_key)
+        recording_count = len(recordings_for_bike)
+        revving_count = sum(d['kind'] == 'revving' for d in recordings_for_bike)
+        steady_count = recording_count - revving_count
+        st.markdown(f'''<div class="engine-card"><div><div class="tag">ENGINE PROFILE</div><h3 style="font-size:1.45rem;margin:.4rem 0">{bike['profile_title']}</h3><p class="muted">{bike['description']}</p><div class="spec-grid">{spec_html}</div></div><div class="smallnote" style="margin-top:14px">Available recordings: {steady_count} steady · {revving_count} revving.</div></div>''', unsafe_allow_html=True)
+    heading('01B','Select a recording',f'Choose a WAV file from the {bike["label"]} folder. Numeric filenames are treated as measured reference RPM; Revving is treated as a variable-speed run.')
+    recordings = discover_recordings(source_key)
+    if recordings:
+        st.markdown('''<div class="muted" style="margin:-4px 0 12px">Choose a recording card. Numeric filenames are used as the measured reference RPM; <b>Revving</b> runs are tracked over time.</div>''', unsafe_allow_html=True)
+        selected_file_key = f'recording_choice_{source_key}'
+        if st.session_state.get(selected_file_key) not in [d['file'] for d in recordings]:
+            st.session_state[selected_file_key] = recordings[0]['file']
+        rec_cols = st.columns(3, gap='medium')
+        for index, recording in enumerate(recordings):
+            with rec_cols[index % 3]:
+                is_active = st.session_state[selected_file_key] == recording['file']
+                is_rev = recording['kind'] == 'revving'
+                card_border = '#69b7ff' if is_active else '#2a4565'
+                card_bg = 'linear-gradient(145deg,#1b4166,#101b2b)' if is_active else 'linear-gradient(145deg,#152238,#101827)'
+                icon = '🔄' if is_rev else '🎚️'
+                rpm_line = 'VARIABLE RPM · TRACK OVER TIME' if is_rev else (
+                    f'MEASURED REFERENCE · {recording["ref"]:,.0f} RPM' if recording['ref'] is not None else 'NO REFERENCE RPM IN FILENAME'
+                )
+                st.markdown(
+                    f'''<div style="min-height:112px;padding:14px;border:1px solid {card_border};border-radius:12px;background:{card_bg};margin-bottom:8px">
+                    <div style="font-size:1.45rem">{icon}</div>
+                    <div style="font-size:1.05rem;font-weight:900;color:#f5f9ff;margin-top:5px">{recording['label']}</div>
+                    <div style="font-size:.72rem;font-weight:800;letter-spacing:.04em;color:#8dc5ff;margin-top:6px">{rpm_line}</div>
+                    <div style="font-size:.72rem;color:#aebfd5;margin-top:5px">{recording['file']}</div>
+                    </div>''',
+                    unsafe_allow_html=True
+                )
+                if st.button('✓ SELECTED' if is_active else 'SELECT RECORDING →',
+                             key=f"choose_{source_key}_{index}", use_container_width=True,
+                             type='primary' if is_active else 'secondary'):
+                    st.session_state[selected_file_key] = recording['file']
+                    st.rerun()
+        selected = next(d for d in recordings if d['file'] == st.session_state[selected_file_key])
+        wav = selected['path']
+    else:
+        selected = None
+        wav = None
+        st.warning(f'No WAV files found in `audio/{bike["folder"]}/`. Put each bike’s WAV and matching MP4 files in that folder.')
 
-heading('02','From firing frequency to RPM','A four-stroke cycle takes two crankshaft revolutions, with one firing event per cycle.')
-ca,cb=st.columns([1,1],gap='large')
-with ca:
-    st.markdown('''<div class="panel frequency-panel"><div class="tag">THE FOUR-STROKE CYCLE</div><h3>Watch one cycle · 720° crank rotation</h3><div class="engine-motion"><svg viewBox="0 0 110 145" role="img" aria-label="Animated piston and crankshaft"><rect x="22" y="9" width="56" height="99" rx="7" fill="#152d47" stroke="#79baff" stroke-width="2"/><rect x="28" y="15" width="44" height="10" rx="3" fill="#5caaff"/><rect class="piston" x="29" y="40" width="42" height="20" rx="3" fill="#d6eaff" stroke="#72baff" stroke-width="2"/><path d="M50 60 L50 105" stroke="#9ab7d5" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="105" r="12" fill="#203e5f" stroke="#8fc6ff" stroke-width="3"/><g class="crank"><path d="M50 105 L68 105" stroke="#d6eaff" stroke-width="4" stroke-linecap="round"/><circle cx="68" cy="105" r="5" fill="#68b4ff"/></g><path class="spark" d="M39 29 L34 35 L40 35 L35 42 L47 32 L41 32 Z" fill="#78c4ff"/><path d="M12 18 L12 88 M8 23 L12 15 L16 23 M8 83 L12 91 L16 83" stroke="#72baff" stroke-width="1.5" fill="none"/><text x="8" y="105" fill="#9fcfff" font-size="6" transform="rotate(-90 8 105)">PISTON TRAVEL</text></svg><div class="motion-copy"><strong>Intake → Compression → Power → Exhaust</strong><br>The piston moves up and down while the crankshaft rotates. The spark flashes at the power stroke, driving the piston down. The animation is illustrative, not a real-time engine simulation.<div class="motion-track"><span></span></div></div></div><div class="cycle-grid"><div class="cycle-step"><b>01</b><span>Intake · piston down</span></div><div class="cycle-step"><b>02</b><span>Compression · piston up</span></div><div class="cycle-step"><b>03</b><span>Power · spark fires</span></div><div class="cycle-step"><b>04</b><span>Exhaust · piston up</span></div></div><div class="muted">One full four-stroke cycle takes two crankshaft revolutions. The spark occurs once per cycle in this simplified single-cylinder model.</div><div style="margin-top:14px;border-radius:10px;background:#0e1a2a;padding:12px;text-align:center"><span class="tag">KEY RELATIONSHIP</span><div style="font-size:1.5rem;font-weight:900;color:#82bdff;margin-top:4px">1 firing event / 2 revolutions</div></div></div>''',unsafe_allow_html=True)
-with cb:
-    st.markdown(r'''<div class="panel frequency-panel"><div><div class="tag">CONVERT FREQUENCY TO ENGINE SPEED</div><h3>From events per second to revolutions per minute</h3><p class="muted">Let <i>f₀</i> be the firing-event frequency measured in hertz (events per second).</p></div><div style="text-align:center;border:1px solid #294b75;background:#0e1a2a;border-radius:12px;padding:22px 12px;margin:14px 0"><div class="tag">STEP 1 · FIRING FREQUENCY</div><div style="font-size:clamp(1.2rem,2.2vw,1.8rem);font-weight:800;color:#d8eaff;margin:14px 0">f₀ = RPM / (2 × 60)</div><div class="muted">One firing event every two crankshaft revolutions; 60 converts minutes to seconds.</div></div><div style="text-align:center;color:#bcdcff;font-weight:800;letter-spacing:.08em">REARRANGE</div><div style="text-align:center;border:1px solid #3d6fa4;background:linear-gradient(135deg,#15375a,#0e1a2a);border-radius:12px;padding:22px 12px;margin:14px 0"><div class="tag">STEP 2 · ENGINE SPEED</div><div style="font-size:clamp(1.7rem,3vw,2.4rem);font-weight:950;color:#82bdff;margin:12px 0">RPM = 120 × f₀</div><div class="muted">Multiply the estimated firing frequency by 120 to obtain revolutions per minute.</div></div><div style="border-radius:10px;background:#0e1a2a;padding:16px;margin-top:auto"><div class="tag">QUICK EXAMPLE</div><div class="specnum">33.3 Hz × 120 ≈ 4,000 RPM</div><div class="muted">The harmonic-comb estimator finds the likely firing frequency from the spectrum. This equation converts it to engine speed.</div></div></div>''',unsafe_allow_html=True)
+if selected is not None:
+    stem = Path(selected['file']).stem
+    if source_key == 'custom':
+        video = None
+    else:
+        video = next((wav.parent/(stem+ext) for ext in ('.mp4','.mov','.webm','.m4v') if (wav.parent/(stem+ext)).exists()), None)
+    ref_text = f" · Measured reference: {selected['ref']:,.0f} RPM" if selected['ref'] is not None else ' · No measured reference RPM'
+    st.markdown(f'''<div class="panel"><div class="tag">SELECTED DATASET</div><h3>{selected['label']}</h3><div class="muted">{selected['note']} · File: <code>{selected['file']}</code>{ref_text}</div></div>''', unsafe_allow_html=True)
+else:
+    stem = ''
+    video = None
 
-heading('03','Choose one of the six recordings','Select a recording below to update the player, waveform, spectrum and analysis.')
-cols=st.columns(6)
-if 'dataset_idx' not in st.session_state: st.session_state.dataset_idx=0
-for i,d in enumerate(DATA):
-    with cols[i]:
-        label=('🏁 '+d['label'])
-        if st.button(label,key=f'dataset_{i}',use_container_width=True,type='primary' if st.session_state.dataset_idx==i else 'secondary'):
-            st.session_state.dataset_idx=i
-selected=DATA[st.session_state.dataset_idx]; wav=AUDIO/selected['file']; stem=Path(selected['file']).stem
-video=next((AUDIO/(stem+ext) for ext in ('.mp4','.mov','.webm','.m4v') if (AUDIO/(stem+ext)).exists()),None)
-st.markdown(f'''<div class="panel"><div class="tag">SELECTED DATASET</div><h3>{selected['label']}</h3><div class="muted">{selected['note']} · File: <code>{selected['file']}</code></div></div>''',unsafe_allow_html=True)
-
-if not wav.exists():
-    st.warning(f'`audio/{selected["file"]}` is not in this package yet. Put your WAV files into the `audio/` folder to enable playback and live analysis. Previously calculated steady-recording results are shown below until the WAV is available.')
+if selected is None or wav is None or not wav.exists():
+    st.info('Select a bike and a recording, or upload a custom audio file, to begin analysis.')
     audio=None; y=None; sr=None; duration=0; detail=None; summary=None
 else:
     y,sr=load_audio(wav)
@@ -197,13 +404,22 @@ else:
         win_sec=.50; hop_sec=.15; min_rpm=900; max_rpm=12000
     else:
         win_sec=1.5; hop_sec=.5; min_rpm=900; max_rpm=6500
-    cache_key=f'{wav.name}-{wav.stat().st_mtime_ns}-{win_sec}-{hop_sec}-{max_rpm}'
     @st.cache_data(show_spinner='Analysing overlapping audio windows…')
     def run_analysis(pathstr, mtime, window_sec, hop_sec, max_rpm):
         return analyse_recording(pathstr,window_sec=window_sec,hop_sec=hop_sec,min_rpm=900,max_rpm=max_rpm)
     detail,summary=run_analysis(str(wav),wav.stat().st_mtime_ns,win_sec,hop_sec,max_rpm)
 
-heading('04','Audio, video & RPM dashboard','Play the selected recording to hear the engine and follow the estimated RPM.')
+heading('02','From firing frequency to RPM','A four-stroke cycle takes two crankshaft revolutions, with one firing event per cycle.')
+ca,cb=st.columns([1,1],gap='large')
+with ca:
+    st.markdown('''<div class="panel frequency-panel"><div class="tag">THE FOUR-STROKE CYCLE</div><h3>Watch one cycle · 720° crank rotation</h3><div class="engine-motion"><svg viewBox="0 0 110 145" role="img" aria-label="Animated piston and crankshaft"><rect x="22" y="9" width="56" height="99" rx="7" fill="#152d47" stroke="#79baff" stroke-width="2"/><rect x="28" y="15" width="44" height="10" rx="3" fill="#5caaff"/><rect class="piston" x="29" y="40" width="42" height="20" rx="3" fill="#d6eaff" stroke="#72baff" stroke-width="2"/><path d="M50 60 L50 105" stroke="#9ab7d5" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="105" r="12" fill="#203e5f" stroke="#8fc6ff" stroke-width="3"/><g class="crank"><path d="M50 105 L68 105" stroke="#d6eaff" stroke-width="4" stroke-linecap="round"/><circle cx="68" cy="105" r="5" fill="#68b4ff"/></g><path class="spark" d="M39 29 L34 35 L40 35 L35 42 L47 32 L41 32 Z" fill="#78c4ff"/><path d="M12 18 L12 88 M8 23 L12 15 L16 23 M8 83 L12 91 L16 83" stroke="#72baff" stroke-width="1.5" fill="none"/><text x="8" y="105" fill="#9fcfff" font-size="6" transform="rotate(-90 8 105)">PISTON TRAVEL</text></svg><div class="motion-copy"><strong>Intake → Compression → Power → Exhaust</strong><br>The piston moves up and down while the crankshaft rotates. The spark flashes at the power stroke, driving the piston down. The animation is illustrative, not a real-time engine simulation.<div class="motion-track"><span></span></div></div></div><div class="cycle-grid"><div class="cycle-step"><b>01</b><span>Intake · piston down</span></div><div class="cycle-step"><b>02</b><span>Compression · piston up</span></div><div class="cycle-step"><b>03</b><span>Power · spark fires</span></div><div class="cycle-step"><b>04</b><span>Exhaust · piston up</span></div></div><div class="muted">One full four-stroke cycle takes two crankshaft revolutions. The spark occurs once per cycle in this simplified single-cylinder model.</div><div style="margin-top:14px;border-radius:10px;background:#0e1a2a;padding:12px;text-align:center"><span class="tag">KEY RELATIONSHIP</span><div style="font-size:1.5rem;font-weight:900;color:#82bdff;margin-top:4px">1 firing event / 2 revolutions</div></div></div>''',unsafe_allow_html=True)
+with cb:
+    st.markdown(r'''<div class="panel frequency-panel"><div><div class="tag">CONVERT FREQUENCY TO ENGINE SPEED</div><h3>From events per second to revolutions per minute</h3><p class="muted">Let <i>f₀</i> be the firing-event frequency measured in hertz (events per second).</p></div><div style="text-align:center;border:1px solid #294b75;background:#0e1a2a;border-radius:12px;padding:22px 12px;margin:14px 0"><div class="tag">STEP 1 · FIRING FREQUENCY</div><div style="font-size:clamp(1.2rem,2.2vw,1.8rem);font-weight:800;color:#d8eaff;margin:14px 0">f₀ = RPM / (2 × 60)</div><div class="muted">One firing event every two crankshaft revolutions; 60 converts minutes to seconds.</div></div><div style="text-align:center;color:#bcdcff;font-weight:800;letter-spacing:.08em">REARRANGE</div><div style="text-align:center;border:1px solid #3d6fa4;background:linear-gradient(135deg,#15375a,#0e1a2a);border-radius:12px;padding:22px 12px;margin:14px 0"><div class="tag">STEP 2 · ENGINE SPEED</div><div style="font-size:clamp(1.7rem,3vw,2.4rem);font-weight:950;color:#82bdff;margin:12px 0">RPM = 120 × f₀</div><div class="muted">Multiply the estimated firing frequency by 120 to obtain revolutions per minute.</div></div><div style="border-radius:10px;background:#0e1a2a;padding:16px;margin-top:auto"><div class="tag">QUICK EXAMPLE</div><div class="specnum">33.3 Hz × 120 ≈ 4,000 RPM</div><div class="muted">The harmonic-comb estimator finds the likely firing frequency from the spectrum. This equation converts it to engine speed.</div></div></div>''',unsafe_allow_html=True)
+
+# Dataset selection and loading are handled above; the sections below retain the existing analysis UI.
+heading('03','Recording selected','The chosen dataset recording or converted custom upload feeds the same RPM-analysis pipeline.')
+
+heading('04','Audio & RPM dashboard','Play the selected recording to hear the engine and follow the estimated RPM.')
 if audio is not None:
     median=float(summary['median_rpm']) if pd.notna(summary['median_rpm']) else 0.0
     if selected['kind']=='revving':
@@ -211,18 +427,24 @@ if audio is not None:
         # Smooth isolated estimator jitter lightly, while preserving the overall rev-up/rev-down shape.
         vals=usable['rpm'].rolling(3,center=True,min_periods=1).median().clip(0,12000).to_numpy()
         trace=[[round(float(t),3),round(float(v),1)] for t,v in zip(usable['start_s'],vals)]
-        gauge_value=median; actual=None
+        gauge_value=median; actual=selected['ref']
     else:
         trace=[]; gauge_value=median; actual=selected['ref']
-    html=gauge_html(gauge_value,'ESTIMATED RPM',actual=actual,revving=selected['kind']=='revving',audio_path=wav,video_path=video,trace=trace,loop=True)
-    components.html(html,height=(540 if selected['kind']=='revving' else 470) if video else (500 if selected['kind']=='revving' else 430),scrolling=False)
-    if video is None: st.caption(f'No matching video found. Add `audio/{stem}.mp4` (or .mov/.webm/.m4v) to show the video in sync with this audio.')
+    html=gauge_html(gauge_value,'ESTIMATED RPM',actual=actual,revving=selected['kind']=='revving',audio_path=wav,video_path=video,trace=trace,loop=True,show_video=(source_key != 'custom'))
+    # Custom uploads also have a native Streamlit player above, so playback remains available if an embedded browser audio control is blocked.
+    # The gauge canvas is tall on desktop. Streamlit clips iframe content when its
+    # height is too small, which hides PLAY RUN and STOP below the dial. Give the
+    # custom-audio player enough iframe height regardless of whether a reference
+    # RPM was supplied; keep the existing heights for the built-in datasets.
+    player_height = 1050 if source_key == 'custom' else ((760 if selected['kind'] == 'revving' else 650) if video else (760 if selected['kind'] == 'revving' else 650))
+    components.html(html, height=player_height, scrolling=True)
+    if video is None and source_key != 'custom': st.caption(f'No matching video found. Add `{wav.parent.name}/{stem}.mp4` beside the WAV to show the video in sync with this audio.')
     if selected['kind']=='revving':
         with st.expander('How revving RPM is tracked'):
             st.write('The audio is analysed in overlapping 0.50-second windows, with a new estimate every 0.15 seconds. Each estimate is plotted at its time position. The needle returns to zero after playback, waits one second, and repeats.')
     else:
         with st.expander('How to read the two gauges'):
-            st.write('Estimated RPM is calculated from the audio. Actual RPM is the measured reference value for this steady recording.')
+            st.write('Estimated RPM is calculated from the audio. The second gauge appears when a measured reference RPM is available from the filename or the custom-audio reference field.')
 else:
     st.markdown('''<div class="panel"><h3>Playback area ready</h3><p class="muted">Once the WAV is added, this panel shows an automotive tachometer, a play/stop control, audio playback and the matching video if present.</p></div>''',unsafe_allow_html=True)
 
@@ -328,7 +550,7 @@ if audio is not None:
     st.markdown('**All window-level outputs**');st.dataframe(detail,use_container_width=True,hide_index=True)
 else:
     st.dataframe(known_results(),use_container_width=True,hide_index=True)
-    st.caption('These are prior steady-recording results from the project context. They are included for transparency; they will be recalculated from the WAVs when you add the audio files.')
+    st.caption('The table lists WAV files discovered in the three bike folders. Estimates are calculated when a recording is selected.')
 
 heading('09','Conclusion','A concise summary of the selected recording and the estimate.')
 if audio is not None:
@@ -339,6 +561,6 @@ if audio is not None:
     f0med=float(chosen['f0_hz'].median()) if len(chosen) and chosen['f0_hz'].notna().any() else np.nan
     st.markdown(f"""<div class="panel"><div class="tag">AUTOMATED SUMMARY · CURRENT RECORDING</div><h3>{selected['label']}</h3><ul class="muted"><li><b>Frames analysed:</b> {summary['total_windows']} overlapping windows; {summary['accepted_windows']} passed the implemented checks ({summary['accepted_percent']:.1f}%).</li><li><b>Estimated RPM:</b> median {med:,.0f} RPM, with P10–P90 spread {p10:,.0f}–{p90:,.0f} RPM.</li><li><b>Firing frequency:</b> accepted-window median approximately {f0med:.2f} Hz. For a single-cylinder four-stroke engine, RPM = 120 × f₀.</li><li><b>Why this estimate:</b> candidate firing frequency is supported by energy at expected harmonics, not just the strongest peak. Median and percentile spread reduce the influence of isolated outliers.</li><li><b>Limitations:</b> PASS means a frame was not flagged by these checks, not that it is guaranteed correct. Revving estimates can still be affected by noise, exhaust resonances, limited window resolution or octave ambiguity.</li></ul></div>""",unsafe_allow_html=True)
 else:
-    st.markdown('''<div class="panel"><div class="tag">PROJECT CONCLUSION · PRIOR STEADY DATA</div><h3>Acoustic RPM estimation from six recordings</h3><ul class="muted"><li>Earlier steady-recording estimates: 1,530; 2,120; 3,140; 4,080; and 5,040 RPM.</li><li>Measured RPM is the reference for the five steady recordings; P10–P90 shows variation across accepted windows.</li><li>The revving run is tracked over time to show changing engine speed rather than a single fixed RPM.</li></ul></div>''',unsafe_allow_html=True)
+    st.markdown('''<div class="panel"><div class="tag">PROJECT CONCLUSION · PRIOR STEADY DATA</div><h3>Acoustic RPM estimation across the selected datasets</h3><ul class="muted"><li>Steady recordings use the numeric filename as the measured reference RPM when available.</li><li>P10–P90 shows variation across accepted windows.</li><li>Revving recordings are tracked over time to show changing engine speed rather than a single fixed RPM.</li></ul></div>''',unsafe_allow_html=True)
 
 st.markdown('''<div style="text-align:center;border-top:1px solid #343439;padding-top:20px;margin-top:40px;color:#777780;font-size:.76rem;letter-spacing:.14em">REVSENSE · ACOUSTIC ENGINE SPEED ESTIMATION</div>''',unsafe_allow_html=True)

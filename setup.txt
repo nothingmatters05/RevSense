@@ -1,0 +1,20 @@
+RevSense setup
+
+Files:
+- app.py: Streamlit interface
+- rpm_estimator.py: RPM analysis backend
+- requirements.txt: Python package dependencies
+
+Install:
+    python -m pip install -r requirements.txt
+
+Run from the folder containing app.py:
+    streamlit run app.py
+
+Custom audio:
+- WAV/FLAC/OGG/AIFF can usually be decoded directly by SoundFile.
+- MP3/M4A/AAC and some other formats may need FFmpeg installed and available on PATH.
+- A custom upload always has a native Streamlit audio player as a playback fallback.
+- Enter the measured RPM only if you have a tachometer/reference measurement; leaving it unchecked shows only the estimated-RPM gauge.
+
+The backend file is included separately and should be placed in the same folder as app.py.
